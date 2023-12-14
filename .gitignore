@@ -1,5 +1,6 @@
-./dataset
-./wandb
-./test.py
-./Cantonese
+dataset/
+wandb
+test.py
+Cantonese
+
 
