@@ -1,6 +1,7 @@
 dataset/
 wandb
 test.py
-Cantonese
+pseudo_dataset
+exp
 
 

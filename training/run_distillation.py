@@ -24,6 +24,7 @@ import re
 import shutil
 import sys
 import time
+from jiwer import cer
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -44,6 +45,7 @@ from datasets import (
     concatenate_datasets,
     interleave_datasets,
     load_dataset,
+    load_from_disk
 )
 from huggingface_hub import Repository, create_repo
 from torch.utils.data import DataLoader
@@ -554,7 +556,7 @@ def load_multiple_datasets(
     seed: Optional[int] = None,
     accelerator: Optional[Accelerator] = None,
     **kwargs,
-) -> IterableDataset:
+) :
     dataset_names_dict = convert_dataset_str_to_list(
         dataset_names, dataset_config_names, splits, text_column_names, dataset_samples
     )
@@ -570,10 +572,7 @@ def load_multiple_datasets(
         # we have a single dataset so just return it as is
         return load_dataset(
             dataset_dict["name"],
-            dataset_dict["config"],
             split=dataset_dict["split"],
-            streaming=streaming,
-            **kwargs,
         )
 
     all_datasets = []
@@ -993,7 +992,8 @@ def main():
     num_workers = data_args.preprocessing_num_workers
     dataloader_num_workers = training_args.dataloader_num_workers
 
-    metric = evaluate.load("wer")
+    # metric = evaluate.load("wer")
+    metric = cer
     normalizer = (
         BasicTextNormalizer() if language is not None else EnglishTextNormalizer(tokenizer.english_spelling_normalizer)
     )
@@ -1029,7 +1029,7 @@ def main():
             whisper_transcript = tokenizer.decode(whisper_transcript, skip_special_tokens=True)
         if len(norm_ground_truth) > 0 and whisper_transcript is not None:
             norm_whisper_transcript = normalizer(whisper_transcript)
-            wer = 100 * metric.compute(predictions=[norm_whisper_transcript], references=[norm_ground_truth])
+            wer = 100 * metric(hypothesis=[norm_whisper_transcript], reference=[norm_ground_truth])
             return wer < wer_threshold
         else:
             # filter automatically since we can't know the WER
@@ -1038,7 +1038,7 @@ def main():
     filter_by_wer_threshold = partial(
         raw_datasets["train"].filter,
         function=is_wer_in_range,
-        input_columns=["text", "whisper_transcript"],
+        input_columns=["sentence", "whisper_transcript"],
     )
 
     if wer_threshold is not None:
@@ -1225,7 +1225,7 @@ def main():
         pred_str = tokenizer.batch_decode(preds, skip_special_tokens=True, decode_with_timestamps=return_timestamps)
         # we do not want to group tokens when computing the metrics
         label_str = tokenizer.batch_decode(labels, skip_special_tokens=True)
-        wer_ortho = 100 * metric.compute(predictions=pred_str, references=label_str)
+        wer_ortho = 100 * metric(hypothesis=pred_str, reference=label_str)
 
         # normalize everything and re-compute the WER
         norm_pred_str = [normalizer(pred) for pred in pred_str]
@@ -1237,7 +1237,7 @@ def main():
         norm_pred_str = [norm_pred_str[i] for i in range(len(norm_pred_str)) if len(norm_label_str[i]) > 0]
         norm_label_str = [norm_label_str[i] for i in range(len(norm_label_str)) if len(norm_label_str[i]) > 0]
 
-        wer = 100 * metric.compute(predictions=norm_pred_str, references=norm_label_str)
+        wer = 100 * metric(hypothesis=norm_pred_str, reference=norm_label_str)
         return {"wer": wer, "wer_ortho": wer_ortho}, pred_str, label_str, norm_pred_str, norm_label_str
 
     # 12. Define Training Schedule
